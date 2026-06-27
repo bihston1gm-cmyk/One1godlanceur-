@@ -1,0 +1,51 @@
+{
+  "name": "One1god Dev Environment",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-22.04",
+
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "24"
+    },
+    "ghcr.io/devcontainers/features/java:1": {
+      "version": "21",
+      "jdk": "ms"
+    },
+    "ghcr.io/devcontainers/features/python:1": {
+      "version": "3.11"
+    },
+    "ghcr.io/devcontainers/features/git:1": {}
+  },
+
+  "postCreateCommand": "bash .devcontainer/setup-android.sh",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "dsznajder.es7-react-js-snippets",
+        "GitHub.copilot",
+        "GitHub.copilot-chat",
+        "formulahendry.auto-rename-tag",
+        "naumovs.color-highlight"
+      ],
+      "settings": {
+        "editor.formatOnSave": true,
+        "terminal.integrated.defaultProfile.linux": "bash",
+        "editor.fontSize": 14,
+        "editor.tabSize": 2
+      }
+    }
+  },
+
+  "forwardPorts": [5173, 3000],
+  "portsAttributes": {
+    "5173": { "label": "Vite Dev Server", "onAutoForward": "openBrowser" }
+  },
+
+  "remoteEnv": {
+    "ANDROID_HOME": "/home/vscode/android-sdk",
+    "ANDROID_SDK_ROOT": "/home/vscode/android-sdk",
+    "PATH": "${PATH}:/home/vscode/android-sdk/cmdline-tools/latest/bin:/home/vscode/android-sdk/platform-tools"
+  }
+}
