@@ -1,0 +1,6 @@
+{
+  "appId": "com.one1god.lanceur",
+  "appName": "One1godlanceur",
+  "webDir": "dist",
+  "android": { "allowMixedContent": true, "backgroundColor": "#000000" }
+}
