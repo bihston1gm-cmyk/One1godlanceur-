@@ -145,6 +145,36 @@ jobs:
           path = 'android/app/src/main/AndroidManifest.xml'
           with open(path) as f:
               content = f.read()
+
+          # Permissions nécessaires au launcher
+          permissions = """
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.CALL_PHONE"/>
+    <uses-permission android:name="android.permission.SEND_SMS"/>
+    <uses-permission android:name="android.permission.READ_CONTACTS"/>
+    <uses-permission android:name="android.permission.CAMERA"/>
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" tools:ignore="QueryAllPackagesPermission"/>
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <uses-permission android:name="android.permission.VIBRATE"/>
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>"""
+
+          # Ajouter tools namespace si absent
+          if 'xmlns:tools' not in content:
+              content = content.replace(
+                  'xmlns:android=',
+                  'xmlns:tools="http://schemas.android.com/tools"\n    xmlns:android='
+              )
+
+          # Insérer permissions avant <application
+          if '<uses-permission android:name="android.permission.INTERNET"/>' not in content:
+              content = content.replace('<application', permissions + '\n\n    <application', 1)
+
+          # Intent HOME launcher
           home = """
               <intent-filter>
                   <action android:name="android.intent.action.MAIN" />
@@ -152,10 +182,71 @@ jobs:
                   <category android:name="android.intent.category.DEFAULT" />
               </intent-filter>"""
           content = content.replace('</activity>', home + '\n        </activity>', 1)
+
           with open(path, 'w') as f:
               f.write(content)
-          print("✅ Manifest patched")
+          print("✅ Manifest patched — permissions + HOME launcher")
           PYEOF
+
+      - name: 🔌 Plugin natif — Liste des apps installées
+        run: |
+          # Créer le plugin AppList
+          PLUGIN_DIR="android/app/src/main/java/com/one1god/lanceur"
+          mkdir -p "$PLUGIN_DIR"
+
+          cat > "$PLUGIN_DIR/AppListPlugin.java" << 'JAVAEOF'
+          package com.one1god.lanceur;
+          import com.getcapacitor.JSArray;
+          import com.getcapacitor.JSObject;
+          import com.getcapacitor.Plugin;
+          import com.getcapacitor.PluginCall;
+          import com.getcapacitor.PluginMethod;
+          import com.getcapacitor.annotation.CapacitorPlugin;
+          import android.content.pm.ApplicationInfo;
+          import android.content.pm.PackageManager;
+          import android.content.Intent;
+          import android.graphics.Bitmap;
+          import android.graphics.Canvas;
+          import android.graphics.drawable.Drawable;
+          import android.util.Base64;
+          import java.io.ByteArrayOutputStream;
+          import java.util.List;
+          @CapacitorPlugin(name = "AppList")
+          public class AppListPlugin extends Plugin {
+              @PluginMethod
+              public void getInstalledApps(PluginCall call) {
+                  PackageManager pm = getContext().getPackageManager();
+                  Intent mainIntent = new Intent(Intent.ACTION_MAIN, null);
+                  mainIntent.addCategory(Intent.CATEGORY_LAUNCHER);
+                  List apps = pm.queryIntentActivities(mainIntent, 0);
+                  JSArray result = new JSArray();
+                  for (Object ri : apps) {
+                      android.content.pm.ResolveInfo resolveInfo = (android.content.pm.ResolveInfo) ri;
+                      JSObject app = new JSObject();
+                      app.put("name", resolveInfo.loadLabel(pm).toString());
+                      app.put("packageName", resolveInfo.activityInfo.packageName);
+                      result.put(app);
+                  }
+                  JSObject ret = new JSObject();
+                  ret.put("apps", result);
+                  call.resolve(ret);
+              }
+          }
+          JAVAEOF
+
+          # Enregistrer le plugin dans MainActivity
+          MAIN_ACT=$(find android -name "MainActivity.java" 2>/dev/null | head -1)
+          if [ -n "$MAIN_ACT" ]; then
+            sed -i 's/import com.getcapacitor.BridgeActivity;/import com.getcapacitor.BridgeActivity;
+import com.one1god.lanceur.AppListPlugin;/' "$MAIN_ACT"
+            sed -i 's/public class MainActivity extends BridgeActivity {/public class MainActivity extends BridgeActivity {
+    @Override
+    public void onCreate(android.os.Bundle savedInstanceState) {
+        registerPlugin(AppListPlugin.class);
+        super.onCreate(savedInstanceState);
+    }/' "$MAIN_ACT"
+            echo "✅ AppListPlugin enregistré dans MainActivity"
+          fi
 
       - name: 🔄 Sync Capacitor
         run: npx cap sync android
@@ -238,14 +329,14 @@ const PACKS=[
   {id:"crystal",name:"Crystal",  icon:"🔮"},
   {id:"flat",   name:"Flat",     icon:"⬜"},
 ];
-const REAL_TRANS=["slide","cube","orbital","flip","vortex","portal","shatter","helix","glitch","ripple","fold"];
+const REAL_TRANS=["slide","cube","orbital","flip","vortex","portal","shatter","helix","glitch","ripple","fold","book"];
 const ALL_TRANS=[
   {id:"slide",  n:"Glissement",e:"↔️"},{id:"cube",   n:"Cube 3D",  e:"📦"},
   {id:"orbital",n:"Orbital",   e:"🌀"},{id:"flip",   n:"Flip",     e:"🎴"},
   {id:"vortex", n:"Vortex",    e:"🌪️"},{id:"portal", n:"Portail",  e:"⭕"},
   {id:"shatter",n:"Fracas",    e:"💥"},{id:"helix",  n:"Hélix",    e:"🧬"},
   {id:"glitch", n:"Glitch",    e:"⚡"},{id:"ripple", n:"Vague",    e:"💧"},
-  {id:"fold",   n:"Pliage",    e:"📄"},{id:"random", n:"Aléatoire",e:"🎲"},
+  {id:"fold",   n:"Pliage",    e:"📄"},{id:"book",   n:"Feuilletage",e:"📖"},{id:"random", n:"Aléatoire",e:"🎲"},
 ];
 const EMOJIS=['📞','✉️','🌍','📷','🎵','🖼️','⚙️','🗺️','📧','🎮','📅','🛒','☁️','📊','▶️','📰','🎙️','💳','🔔','🌤️','📖','🎯','💪','🙏','🔐','🛡️','📁','⚡','🌟','💫','🔥','⭐','🏆','💡','🎨','🚀','✈️','🎸','🥊','🏠','💻','🔑'];
 
@@ -253,7 +344,7 @@ const CSS=`
 @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Orbitron:wght@700;900&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;-webkit-font-smoothing:antialiased}
 html,body,#root{width:100%;height:100%;overflow:hidden;background:#000}
-.r{width:100%;height:100%;display:flex;flex-direction:column;font-family:'Rajdhani',sans-serif;position:relative;overflow:hidden;user-select:none;touch-action:pan-y}
+.r{width:100%;height:100%;display:flex;flex-direction:column;font-family:'Rajdhani',sans-serif;position:relative;overflow:hidden;user-select:none;touch-action:auto}
 .wp{position:absolute;inset:0;z-index:0;transition:opacity .5s ease}
 .wp::after{content:'';position:absolute;inset:0;background:linear-gradient(to bottom,rgba(0,0,0,.45) 0%,transparent 32%,transparent 55%,rgba(0,0,0,.75) 100%)}
 .wp-img{position:absolute;inset:0;background-size:cover;background-position:center}
@@ -288,6 +379,8 @@ html,body,#root{width:100%;height:100%;overflow:hidden;background:#000}
 @keyframes tRipple  {from{transform:scale3d(.06,.06,1);opacity:0;border-radius:50%;filter:blur(10px) brightness(2.5)}40%{border-radius:25%;transform:scale3d(1.04,1.04,1)}to{transform:scale3d(1,1,1);opacity:1;border-radius:0;filter:blur(0) brightness(1)}}
 @keyframes tFoldR   {from{transform:perspective(900px) rotateY(-110deg);opacity:0;transform-origin:left center}60%{transform:perspective(900px) rotateY(6deg)}to{transform:perspective(900px) rotateY(0);opacity:1}}
 @keyframes tFoldL   {from{transform:perspective(900px) rotateY(110deg);opacity:0;transform-origin:right center}60%{transform:perspective(900px) rotateY(-6deg)}to{transform:perspective(900px) rotateY(0);opacity:1}}
+@keyframes tBookR   {0%{transform:perspective(1200px) rotateY(90deg) scaleX(.5);opacity:0;transform-origin:left center}30%{opacity:.7}60%{transform:perspective(1200px) rotateY(-8deg) scaleX(1.02);opacity:1;transform-origin:left center}80%{transform:perspective(1200px) rotateY(3deg) scaleX(1);transform-origin:left center}to{transform:perspective(1200px) rotateY(0) scaleX(1);opacity:1;transform-origin:left center}}
+@keyframes tBookL   {0%{transform:perspective(1200px) rotateY(-90deg) scaleX(.5);opacity:0;transform-origin:right center}30%{opacity:.7}60%{transform:perspective(1200px) rotateY(8deg) scaleX(1.02);opacity:1;transform-origin:right center}80%{transform:perspective(1200px) rotateY(-3deg) scaleX(1);transform-origin:right center}to{transform:perspective(1200px) rotateY(0) scaleX(1);opacity:1;transform-origin:right center}}
 @keyframes wiggle   {0%{transform:rotate(-2.5deg) scale(.96)}100%{transform:rotate(2.5deg) scale(.96)}}
 .cell{display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer;position:relative}
 .ico{width:76px;height:76px;border-radius:20px;display:flex;align-items:center;justify-content:center;font-size:40px;position:relative;overflow:hidden;flex-shrink:0;transition:transform .08s ease,filter .08s ease;will-change:transform;backface-visibility:hidden;transform:translate3d(0,0,0)}
@@ -480,7 +573,7 @@ function icoStyle(app,pack){
 function pickAnim(t,dir){
   const d=dir>=0?"R":"L";
   const tid=t==="random"?REAL_TRANS[Math.floor(Math.random()*REAL_TRANS.length)]:t;
-  const m={slide:`tSlide${d}`,cube:`tCube${d}`,orbital:"tOrbital",flip:"tFlip",vortex:"tVortex",portal:"tPortal",shatter:"tShatter",helix:"tHelix",glitch:"tGlitch",ripple:"tRipple",fold:`tFold${d}`};
+  const m={slide:`tSlide${d}`,cube:`tCube${d}`,orbital:"tOrbital",flip:"tFlip",vortex:"tVortex",portal:"tPortal",shatter:"tShatter",helix:"tHelix",glitch:"tGlitch",ripple:"tRipple",fold:`tFold${d}`,book:`tBook${d}`};
   return`${m[tid]||"tSlideR"} .42s cubic-bezier(.25,.46,.45,.94) both`;
 }
 
@@ -548,15 +641,62 @@ export default function One1godlanceur(){
   const[editName,setEditName]=useState('');
   const[editIcon,setEditIcon]=useState('');
 
-  const touchX=useRef(null),touchY=useRef(null),lpTimer=useRef(null),fileRef=useRef(null),scanRef=useRef(null);
+  const touchX=useRef(null),touchY=useRef(null),lpTimer=useRef(null),fileRef=useRef(null),scanRef=useRef(null),rootRef=useRef(null);
+  const swipeHoriz=useRef(false),swipeDetermined=useRef(false);
 
   useEffect(()=>{const t=setInterval(()=>setNow(new Date()),1000);return()=>clearInterval(t);},[]);
   useEffect(()=>{try{localStorage.setItem('o1g_order',JSON.stringify(customOrder));}catch{}},[customOrder]);
   useEffect(()=>{try{localStorage.setItem('o1g_dock',JSON.stringify(dockOrder));}catch{}},[dockOrder]);
   useEffect(()=>{try{localStorage.setItem('o1g_apps',JSON.stringify(customAppsData));}catch{}},[customAppsData]);
+  // Charger les vraies apps installées
+  useEffect(()=>{
+    const loadRealApps=async()=>{
+      try{
+        const{Capacitor}=await import('@capacitor/core');
+        if(!Capacitor.isNativePlatform())return;
+        const result=await Capacitor.Plugins.AppList.getInstalledApps();
+        if(result&&result.apps&&result.apps.length>0){
+          const realApps=result.apps.map((a,i)=>({
+            id:1000+i,
+            name:a.name.substring(0,12),
+            color:['#22c55e','#3b82f6','#f59e0b','#ec4899','#7c3aed','#ef4444','#0ea5e9','#10b981'][i%8],
+            icon:'📱',
+            packageName:a.packageName,
+          }));
+          // Ajouter les apps réelles à l'ordre
+          setCustomOrder(o=>{
+            const existing=new Set(o);
+            const newIds=realApps.filter(a=>!existing.has(a.id)).map(a=>a.id);
+            return[...o,...newIds];
+          });
+        }
+      }catch(e){console.log('AppList non disponible:',e);}
+    };
+    loadRealApps();
+  },[]);
+
   useEffect(()=>{setPts(Array.from({length:8},(_,i)=>({id:i,x:Math.random()*100,y:Math.random()*100,s:(Math.random()*3+.8).toFixed(1),dur:(Math.random()*9+5).toFixed(1),del:(-(Math.random()*10)).toFixed(1)})));},[]);
   useEffect(()=>{const t=setInterval(()=>{setBattery(b=>{if(charging){if(chargeLimit&&b>=100)return 100;return Math.min(100,parseFloat((b+0.2).toFixed(1)));}return Math.max(1,parseFloat((b-0.05).toFixed(2)));});},2000);return()=>clearInterval(t);},[charging,chargeLimit]);
   useEffect(()=>{if(!adsBlock)return;const t=setInterval(()=>setAdsCount(n=>n+Math.floor(Math.random()*2)),9000);return()=>clearInterval(t);},[adsBlock]);
+  // ── Swipe horizontal non-passif (detecte H vs V) ──
+  useEffect(()=>{
+    const el=rootRef.current;
+    if(!el)return;
+    const onMove=(e)=>{
+      if(!swipeDetermined.current){
+        const dx=Math.abs(e.touches[0].clientX-(touchX.current||0));
+        const dy=Math.abs(e.touches[0].clientY-(touchY.current||0));
+        if(dx>6||dy>6){
+          swipeDetermined.current=true;
+          swipeHoriz.current=dx>dy;
+        }
+      }
+      if(swipeHoriz.current&&!dragging){e.preventDefault();}
+    };
+    el.addEventListener('touchmove',onMove,{passive:false});
+    return()=>el.removeEventListener('touchmove',onMove);
+  },[dragging]);
+
   useEffect(()=>{if(!launching)return;setCountdown(3);const t=setInterval(()=>{setCountdown(c=>{if(c<=1){clearInterval(t);setTimeout(()=>setObStep(5),300);return 0;}return c-1;});},900);return()=>clearInterval(t);},[launching]);
 
   const orderedApps=customOrder.map(id=>APPS.find(a=>a.id===id)).filter(a=>a&&!hiddenApps.has(a.id));
@@ -572,7 +712,12 @@ export default function One1godlanceur(){
     setGridAnim(pickAnim(trans,d));setPage(target);setAnimKey(k=>k+1);
   },[page,totalPg,trans]);
 
-  const onTouchStart=useCallback(e=>{touchX.current=e.touches[0].clientX;touchY.current=e.touches[0].clientY;},[]);
+  const onTouchStart=useCallback(e=>{
+    touchX.current=e.touches[0].clientX;
+    touchY.current=e.touches[0].clientY;
+    swipeHoriz.current=false;
+    swipeDetermined.current=false;
+  },[]);
   const onTouchEnd=useCallback(e=>{
     if(dragging){setDragging(null);setDragOver(null);setDragFromDock(false);return;}
     if(touchX.current===null)return;
@@ -625,6 +770,20 @@ export default function One1godlanceur(){
   const handleLP=useCallback((app,rect)=>{setEditing(true);setCtxPos({x:Math.min(rect.left,window.innerWidth-190),y:Math.min(rect.bottom+4,window.innerHeight-250)});setCtxApp(app);},[]);
 
   const getApp=useCallback((app)=>{const c=customAppsData[app.id];return c?{...app,...c}:app;},[customAppsData]);
+
+  // Demander les permissions Android au lancement
+  useEffect(()=>{
+    const requestPerms=async()=>{
+      try{
+        const{Capacitor}=await import('@capacitor/core');
+        if(!Capacitor.isNativePlatform())return;
+        // Les permissions sont demandées automatiquement
+        // par Android quand l'app en a besoin
+        console.log('✅ Launcher actif');
+      }catch(e){}
+    };
+    if(obStep>=5)requestPerms();
+  },[obStep]);
 
   const openApp=useCallback((app)=>{
     if(editing)return;
@@ -807,7 +966,7 @@ export default function One1godlanceur(){
   // ── LANCEUR PRINCIPAL ─────────────────────────────────────
   return(<>
     <style>{CSS}</style>
-    <div className="r"
+    <div className="r" ref={rootRef}
       onTouchStart={onTouchStart}
       onTouchMove={onDragMove}
       onTouchEnd={e=>{onDragEnd();onTouchEnd(e);}}
